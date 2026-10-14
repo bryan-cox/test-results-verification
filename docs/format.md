@@ -1,0 +1,662 @@
+# Format Specification
+
+This document defines the metadata model, naming conventions, file format, and
+relationship model for test plans and verification reports in this repository.
+
+## Naming Conventions
+
+### Plans
+
+| Situation | Pattern | Example |
+|-----------|---------|---------|
+| Linked to a Jira issue | `plans/<jira-key>.md` | `plans/ocpstrat-3298.md` |
+| No Jira issue | `plans/<descriptive-slug>.md` | `plans/csi-snapshot-validation.md` |
+
+Rules:
+
+- Filenames are **lowercase**.
+- Jira keys use the original project prefix and number (e.g. `ocpstrat-3298`,
+  `cntrlplane-1234`, `ocpbugs-5678`).
+- Slugs for plans without a Jira issue use lowercase words separated by
+  hyphens. Keep them short and descriptive.
+- Files prefixed with `_` (e.g. `_example.md`) are reserved for templates
+  and reference examples. They are not production plans.
+- One plan per file. Do not combine unrelated features.
+
+### Reports
+
+Reports support two formats. Choose based on the report content:
+
+#### HTML-bundle reports (preferred)
+
+```
+reports/<jira-key>/
+├── index.html              # Dashboard / entry-point
+├── scenario-1.html         # Per-scenario detail pages
+├── scenario-2.html
+├── ...
+├── appendices.html          # Environment details, config evidence
+├── automated-tests.html     # CI / automated-test results
+├── assets/                  # Screenshots, diagrams
+│   └── img-scenario-1.png
+├── scripts/                 # Helper scripts used in testing
+│   └── setup-env.sh
+└── derived/                 # Optional IEEE 829 Markdown summary
+    └── report.md
+```
+
+Example: `reports/ocpbugs-100054/index.html` is the entry-point for the
+OCPBUGS-100054 verification report.
+
+HTML bundles are self-contained directories mirroring the existing
+`test-verification-report-*` pattern from the source repository. Each
+bundle typically includes:
+
+| File | Purpose |
+|------|---------|
+| `index.html` | Dashboard with navigation, summary statistics, and links to scenario pages |
+| `scenario-N.html` | Detailed steps, evidence, and pass/fail status for each test scenario |
+| `appendices.html` | Environment details, configuration dumps, supplementary evidence |
+| `automated-tests.html` | CI pipeline results, automated-test logs, coverage data |
+| `assets/` | Screenshots, topology diagrams, and other images referenced by HTML pages |
+| `scripts/` | Helper shell scripts, OIDC token scripts, setup utilities used during testing |
+| `derived/report.md` | Optional IEEE 829 Markdown generated from the HTML (see [Derived Markdown](#derived-markdown-from-html-reports)) |
+
+#### Markdown reports
+
+```
+reports/<jira-key>/<pr-number>.md
+```
+
+Example: `reports/ocpstrat-3298/8698.md` verifies PR #8698 against the
+test plan for OCPSTRAT-3298.
+
+Use Markdown reports for lightweight, single-PR verification results that
+do not require the full HTML bundle structure.
+
+## Metadata Block
+
+Every plan file **must** begin with a YAML front-matter block. This block
+enables automation to discover, index, and link plans.
+
+Fields are divided into three tiers:
+
+- **Required (discoverability core)** — must be present in every indexed plan.
+- **Recommended** — include when applicable; omit rather than use placeholders.
+- **Optional** — useful for discovery and tooling but not required.
+
+> **Legacy/incomplete artifacts:** Migrated plans that lack certain metadata
+> are preserved as-is. Document gaps with a note (e.g. "Missing: Jira issue —
+> pre-dates Jira tracking") rather than fabricating facts.
+
+### Required Fields (Discoverability Core)
+
+Every new or materially updated plan must include these four fields:
+
+```yaml
+---
+id: TP-OCPSTRAT-3298-001        # Unique plan identifier
+date: 2026-09-07                 # Last-updated date (ISO 8601)
+title: "Predictable NodePool Rollout Control"
+status: draft                    # "draft", "active", "superseded", or "archived"
+---
+```
+
+### Recommended Fields
+
+Include these when the information is available. Omit the field entirely
+rather than using empty lists or placeholders:
+
+```yaml
+---
+version: "1.0"                   # Plan version (semver-style)
+jira_issues:                     # Primary + backport Jira issues
+  - key: OCPSTRAT-3298
+    role: primary                # "primary" or "backport"
+    url: https://issues.redhat.com/browse/OCPSTRAT-3298
+pull_requests:                   # Associated PRs
+  - repo: openshift/hypershift
+    number: 8698
+    url: https://github.com/openshift/hypershift/pull/8698
+    role: implementation         # "implementation", "backport", or "test"
+---
+```
+
+### Optional Fields
+
+```yaml
+---
+superseded_by: ocpstrat-3298-v2  # Filename (without .md) of the replacement plan
+tags:                            # Freeform tags for discovery
+  - nodepool
+  - rollout
+  - machine-config
+ieee_829: true                   # Selects the IEEE 829-2008 body profile
+author: ""                       # Plan author (name or GitHub handle)
+---
+```
+
+### Field Reference
+
+| Field | Type | Tier | Description |
+|-------|------|------|-------------|
+| `id` | string | **required** | Unique identifier. Convention: `TP-<JIRA-KEY>-<seq>` or `TP-<SLUG>-<seq>`. |
+| `date` | date | **required** | Last-updated date in ISO 8601 format. |
+| `title` | string | **required** | Human-readable plan title. |
+| `status` | string | **required** | Plan lifecycle status (see below). |
+| `version` | string | recommended | Plan revision. Increment on substantive changes. |
+| `jira_issues` | list | recommended | List of associated Jira issues. Include when the plan tracks Jira work. |
+| `jira_issues[].key` | string | (child) | Jira issue key (e.g. `OCPSTRAT-3298`). |
+| `jira_issues[].role` | string | (child) | `primary` or `backport`. Exactly one issue should be `primary`. |
+| `jira_issues[].url` | string | (child) | Full URL to the Jira issue. |
+| `pull_requests` | list | recommended | List of associated PRs. Include when PRs exist. |
+| `pull_requests[].repo` | string | (child) | GitHub repository in `org/repo` format. |
+| `pull_requests[].number` | integer | (child) | PR number. |
+| `pull_requests[].url` | string | (child) | Full URL to the PR. |
+| `pull_requests[].role` | string | (child) | `implementation`, `backport`, or `test`. |
+| `superseded_by` | string | optional | Filename stem of the replacement plan. |
+| `tags` | list | optional | Freeform tags for search and filtering. |
+| `ieee_829` | boolean | optional | `true` selects the IEEE 829-2008 body profile. |
+| `author` | string | optional | Plan author identifier. |
+
+### Status Lifecycle
+
+> **Note:** The `status` field and its lifecycle values are **repository
+> metadata conventions** used for workflow and discoverability — they are
+> _not_ part of the IEEE 829-2008 standard. Everything in the
+> [Metadata Block](#metadata-block) (the YAML front-matter) is repository
+> housekeeping; the IEEE 829 content begins in the
+> [Plan Body Structure](#plan-body-structure) section below.
+
+```
+draft → active → superseded
+                → archived
+```
+
+- **draft** — plan is under review or incomplete.
+- **active** — plan is approved and in use for verification.
+- **superseded** — replaced by a newer plan (set `superseded_by`).
+- **archived** — no longer relevant (feature removed, etc.).
+
+## One-to-Many Relationships
+
+### One Plan, Many Jira Issues (Backports)
+
+> **Why this matters:** In practice, a feature lands on the main branch and
+> is then cherry-picked to one or more release branches. Each backport
+> carries its own Jira issue and PR, yet the verification logic is
+> identical. Maintaining a single authoritative test plan — instead of
+> copying it per-backport — prevents duplicated plans from drifting out of
+> sync and gives reviewers one place to check. The metadata lists below let
+> automation and reviewers trace every related Jira issue and PR back to
+> that single plan.
+
+A feature implemented in a main-branch PR often gets backported to one or
+more release branches. Each backport has its own Jira issue and PR, but the
+test plan is the same. Rather than duplicating the plan file, list all
+related Jira issues and PRs in the metadata:
+
+```yaml
+jira_issues:
+  - key: OCPSTRAT-3298
+    role: primary
+    url: https://issues.redhat.com/browse/OCPSTRAT-3298
+  - key: OCPBUGS-45678
+    role: backport
+    url: https://issues.redhat.com/browse/OCPBUGS-45678
+  - key: OCPBUGS-45679
+    role: backport
+    url: https://issues.redhat.com/browse/OCPBUGS-45679
+
+pull_requests:
+  - repo: openshift/hypershift
+    number: 8698
+    url: https://github.com/openshift/hypershift/pull/8698
+    role: implementation
+  - repo: openshift/hypershift
+    number: 8750
+    url: https://github.com/openshift/hypershift/pull/8750
+    role: backport
+```
+
+The plan file is named after the **primary** Jira issue key.
+
+### One Plan, Many PRs (Same Feature)
+
+Some features span multiple PRs (e.g. API change + controller + tests).
+List all PRs in the `pull_requests` field.
+
+### Plans Without a Jira Issue
+
+If there is no Jira issue, omit the `jira_issues` field (or leave it as an
+empty list for backward compatibility) and name the file with a descriptive
+slug:
+
+```yaml
+pull_requests:
+  - repo: openshift/hypershift
+    number: 9100
+    url: https://github.com/openshift/hypershift/pull/9100
+    role: implementation
+```
+
+## Plan Body Structure
+
+The body structure depends on the plan profile selected via the `ieee_829`
+front-matter field.
+
+### IEEE 829 Profile (`ieee_829: true`)
+
+When `ieee_829: true`, the plan should follow the IEEE 829-2008 standard
+structure. The recommended sections are:
+
+1. **Test Plan Identifier** — ID, version, date, IEEE 829 reference
+2. **Introduction and Objectives** — purpose, objectives, acceptance criteria
+   mapping, automation-first principle
+3. **Test Items and References** — implementation PRs, code paths, API
+   changes, related documentation
+4. **Test Environment** — cluster types, platforms, prerequisites
+5. **Test Cases** — numbered cases with preconditions, steps, expected results,
+   and automation references
+6. **Risks and Mitigations** — known risks and contingency plans
+7. **Approvals** — sign-off section
+
+This structure is a guideline. Adapt sections as needed for the feature under
+test — not every IEEE 829 plan needs every section.
+
+### Lightweight Profile (default)
+
+When `ieee_829` is absent or `false`, the plan uses a simpler free-form
+Markdown structure. At a minimum it should cover:
+
+- **Scope** — what feature or behavior is being tested and why.
+- **Test cases** — what will be verified, with steps or references.
+- **Acceptance criteria** — what constitutes a pass.
+
+There is no required section numbering or IEEE heading convention. Authors
+may organize content in whatever way best communicates the test strategy.
+
+## Plan Template
+
+Choose a template based on the plan profile you want to use. See
+[Plan Body Structure](#plan-body-structure) for details on each profile.
+
+### IEEE 829 Template (`ieee_829: true`)
+
+Use this template for plans that follow the IEEE 829-2008 standard.
+See also [`plans/_example.md`](../plans/_example.md) for a complete example.
+
+````markdown
+---
+id: TP-<JIRA-KEY>-001
+version: "1.0"
+date: YYYY-MM-DD
+title: "<Feature Name>"
+jira_issues:
+  - key: <JIRA-KEY>
+    role: primary
+    url: https://issues.redhat.com/browse/<JIRA-KEY>
+pull_requests:
+  - repo: openshift/hypershift
+    number: <PR-NUMBER>
+    url: https://github.com/openshift/hypershift/pull/<PR-NUMBER>
+    role: implementation
+status: draft
+tags: []
+ieee_829: true
+---
+
+# Test Plan: <Feature Name>
+
+## 1. Test Plan Identifier
+
+**ID:** TP-<JIRA-KEY>-001
+**Version:** 1.0
+**Date:** YYYY-MM-DD
+**IEEE 829 Compliance:** This document follows the IEEE 829-2008 Standard
+for Software and System Test Documentation.
+
+---
+
+## 2. Introduction and Objectives
+
+### 2.1 Purpose
+
+Describe the feature under test and the purpose of this plan.
+
+### 2.2 Objectives
+
+1. Objective 1
+2. Objective 2
+
+### 2.3 Acceptance Criteria Mapping
+
+| Acceptance Criterion | Test Case |
+|----------------------|-----------|
+| AC #1 — description | TC-001 (Section 5.1) |
+
+---
+
+## 3. Test Items and References
+
+| Item | Reference |
+|------|-----------|
+| Implementation PR | [openshift/hypershift#NNNN](https://github.com/openshift/hypershift/pull/NNNN) |
+| Feature Jira | [JIRA-KEY](https://issues.redhat.com/browse/JIRA-KEY) |
+
+---
+
+## 4. Test Environment
+
+| Property | Value |
+|----------|-------|
+| Cluster type | HostedCluster on AWS |
+| OCP version | 4.x |
+| Management cluster | ... |
+
+---
+
+## 5. Test Cases
+
+### 5.1 TC-001: <Test Case Title>
+
+**Objective:** What this test verifies.
+
+**Preconditions:**
+- Precondition 1
+
+**Primary method (automated):**
+- Test file: `test/e2e/...`
+- Run with: `make e2e TEST_NAME=...`
+
+**Fallback method (manual):**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | ... | ... |
+
+---
+
+## 6. Risks and Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| ... | ... |
+
+---
+
+## 7. Approvals
+
+| Role | Name | Date |
+|------|------|------|
+| Author | | |
+| Reviewer | | |
+````
+
+### Lightweight Template (default)
+
+Use this template when the full IEEE 829 structure is not needed:
+
+````markdown
+---
+id: TP-<SLUG>-001
+date: YYYY-MM-DD
+title: "<Feature Name>"
+status: draft
+---
+
+# Test Plan: <Feature Name>
+
+## Scope
+
+Describe the feature under test, why it needs verification, and any
+relevant context.
+
+## Test Cases
+
+### TC-001: <Test Case Title>
+
+**Steps:**
+1. Step 1
+2. Step 2
+
+**Expected result:** Describe the expected outcome.
+
+### TC-002: <Test Case Title>
+
+...
+
+## Acceptance Criteria
+
+| Criterion | Verified by |
+|-----------|-------------|
+| AC #1 — description | TC-001 |
+````
+
+## Report Formats
+
+Verification reports support two formats depending on the complexity and
+origin of the report content.
+
+### HTML-Bundle Reports (Preferred)
+
+HTML bundles are the **default and preferred** format for verification
+reports. They preserve the rich, navigable structure of generated test
+reports — including dashboards, per-scenario evidence pages, embedded
+screenshots, and CI result summaries.
+
+#### HTML-bundle metadata
+
+HTML-bundle reports use a `metadata.yaml` file (not YAML front-matter)
+placed at the root of the report directory:
+
+```yaml
+# reports/ocpbugs-100054/metadata.yaml
+plan: ""                             # Filename stem of the test plan (if any)
+jira_key: OCPBUGS-100054
+format: html-bundle                  # "html-bundle" or "markdown"
+date: 2026-08-05
+verdict: pass                        # "pass", "fail", or "conditional"
+scenario_count: 8                    # Total test scenarios
+pass_count: 8                        # Scenarios that passed
+ci_verified: true                    # automated-tests.html present?
+has_derived_markdown: false          # derived/report.md present?
+tags:
+  - authentication
+  - hypershift
+```
+
+#### Sanitized HTML-bundle layout example
+
+Below is a representative directory layout for an HTML-bundle report.
+All names, data, and identifiers are fictional.
+
+```
+reports/ocpbugs-99999/
+├── metadata.yaml             # Required report metadata
+├── index.html                # Dashboard: 6 scenarios, 6/6 pass
+├── scenario-1.html           # Cluster provisioning validation
+├── scenario-2.html           # Network-policy enforcement
+├── scenario-3.html           # Ingress-controller health
+├── scenario-4.html           # Node scaling operations
+├── scenario-5.html           # Upgrade rollout verification
+├── scenario-6.html           # Teardown and cleanup
+├── appendices.html           # Environment config, cluster version
+├── automated-tests.html      # CI job results, e2e pass rates
+├── assets/
+│   ├── img-s1-cluster.png    # Screenshot: cluster overview
+│   └── img-s3-ingress.png    # Screenshot: ingress status
+└── scripts/
+    └── setup-env.sh           # Cluster environment bootstrap
+```
+
+#### `index.html` conventions
+
+The index page serves as the report dashboard. It typically includes:
+
+- **Navigation bar** linking to all scenario pages, appendices, and
+  automated-test results.
+- **Summary statistics** (total scenarios, pass/fail counts, coverage).
+- **Test-environment overview** (cluster version, platform, topology).
+- **Jira-key reference** in the page title or header.
+
+HTML reports may reference external CDN resources (e.g. Bootstrap CSS/JS)
+for styling but must not depend on resources outside the bundle for
+_content_ (evidence, logs, screenshots).
+
+#### Scenario pages
+
+Each `scenario-N.html` page documents a single test scenario:
+
+- **Objective** — what is being verified.
+- **Pre-conditions** — cluster state, configuration, prerequisites.
+- **Steps** — numbered test steps with expected vs. actual results.
+- **Evidence** — embedded or linked screenshots, log snippets.
+- **Verdict** — PASS / FAIL / SKIP with notes.
+
+#### Assets and scripts
+
+- Store images in `assets/` and reference them with relative paths.
+- Store helper scripts in `scripts/`. Scripts must be sanitized
+  (no embedded credentials, tokens, or customer identifiers).
+- Large binary assets (> 5 MB per file) should be avoided; link to
+  external storage if necessary.
+
+### Derived Markdown from HTML Reports
+
+When an IEEE 829 Markdown version of an HTML report is needed (e.g. for
+downstream tooling or cross-referencing with plans), place it in
+`derived/report.md` inside the report directory.
+
+Rules:
+
+1. The HTML bundle remains the **authoritative** artifact.
+2. `derived/report.md` is a convenience copy — it may be AI-generated
+   or hand-written.
+3. Set `has_derived_markdown: true` in `metadata.yaml` when present.
+4. Derivation **must not** replace or remove the original HTML files.
+
+### Markdown Report Template
+
+Markdown reports are lightweight, single-file reports for simpler
+verification results. Use this format when the report does not require
+a full HTML bundle.
+
+````markdown
+---
+plan: ocpstrat-3298              # Filename stem of the test plan
+jira_key: OCPSTRAT-3298
+format: markdown                 # "html-bundle" or "markdown"
+pr:
+  repo: openshift/hypershift
+  number: 8698
+  url: https://github.com/openshift/hypershift/pull/8698
+date: YYYY-MM-DD
+tester: ""
+verdict: pass                    # "pass", "fail", or "conditional"
+---
+
+# Verification Report: PR #8698
+
+## Environment
+
+| Property | Value |
+|----------|-------|
+| Cluster type | HostedCluster on AWS |
+| OCP version | 4.18 |
+| Platform | AWS us-east-1 |
+
+## Results
+
+| Test Case | Result | Notes |
+|-----------|--------|-------|
+| TC-001 | Pass | Ran via CI: [link] |
+| TC-002 | Pass | |
+
+## Evidence
+
+- CI job: [link to Prow job]
+- Logs: [link or summary]
+
+## Verdict
+
+**Pass** — all test cases passed.
+````
+
+## Automation Integration Contract
+
+This section defines the contract that automation tools (e.g. Chai Bot,
+ai-helpers skills) must follow when creating or updating plans and reports
+in this repository.
+
+### Creating a Plan
+
+Automation **must**:
+
+1. Generate a valid Markdown file with the required YAML front-matter
+   metadata block (at minimum the discoverability core: `id`, `title`,
+   `date`, `status`). Include `version`, `jira_issues`, and
+   `pull_requests` when the information is available.
+2. Use the correct filename convention (`plans/<jira-key>.md` or
+   `plans/<slug>.md`).
+3. Choose a plan profile:
+   - If `ieee_829: true` is set, follow the IEEE 829-2008 body structure.
+   - Otherwise, use a lightweight Markdown body covering scope, test
+     cases, and acceptance criteria.
+4. Set `status: draft` for newly generated plans.
+5. Include all known Jira issues and PRs in the metadata when available.
+6. Open a PR against `main` with title format
+   `<JIRA-KEY>: Add test plan for <feature>`.
+
+Automation **must not**:
+
+- Commit directly to `main` — always use a PR.
+- Include secrets, credentials, customer data, or private links.
+- Overwrite an existing plan without incrementing the `version` field (if
+  present) and updating the `date`.
+- Create duplicate plan files for backport Jira issues — instead, update
+  the existing plan's `jira_issues` list.
+- Fabricate metadata (Jira keys, PR numbers) that does not exist.
+
+### Updating a Plan
+
+When adding a backport Jira issue or PR to an existing plan, automation
+should:
+
+1. Read the existing plan file.
+2. Append the new Jira issue or PR to the appropriate list.
+3. Increment the `version` field.
+4. Update the `date` field.
+5. Open a PR with the changes.
+
+### Creating a Report
+
+For **HTML-bundle reports**, automation should:
+
+1. Create the directory `reports/<jira-key>/`.
+2. Copy the HTML bundle files (`index.html`, `scenario-*.html`,
+   `appendices.html`, `automated-tests.html`, assets, scripts) into
+   the directory.
+3. Generate a `metadata.yaml` file with required fields (see
+   [HTML-bundle metadata](#html-bundle-metadata)).
+4. Set `format: html-bundle` in the metadata.
+
+For **Markdown reports**, automation should follow the Markdown report
+template defined above and place the file at
+`reports/<jira-key>/<pr-number>.md`.
+
+### File Validation
+
+Automation should validate before committing:
+
+- YAML front-matter is parseable.
+- Required core metadata fields (`id`, `title`, `date`, `status`) are present.
+- All URLs in metadata are well-formed.
+- If `ieee_829: true`, the body contains the expected IEEE 829 sections.
+- Filename matches the primary Jira key or slug.
+- No secrets or private content patterns detected.
+
+> **Note:** Implementation of these automation capabilities in the
+> `ai-helpers` skill library is tracked as a follow-up to
+> [CNTRLPLANE-4323](https://issues.redhat.com/browse/CNTRLPLANE-4323).
+> The contract above is stable and ready for implementation.
