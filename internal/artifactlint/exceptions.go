@@ -9,7 +9,7 @@ import (
 
 // Rules a reviewed exception may waive, by the kind of artifact it pins.
 var (
-	markdownExceptionRules       = ruleSet([]string{"FRONTMATTER", "PROFILE", "STRUCTURE", "REPORT_BODY"}, planCoreFields, reportCoreFields)
+	markdownExceptionRules       = ruleSet([]string{"FRONTMATTER", "PROFILE", "STRUCTURE", "PLAN_CONTENT", "REPORT_BODY"}, planCoreFields, reportCoreFields)
 	bundleMetadataExceptionRules = ruleSet(nil, bundleFields)
 	bundleEntryExceptionRules    = ruleSet([]string{"BUNDLE"})
 	adaptationRules              = ruleSet([]string{"STRUCTURE", "REPORT_BODY"})
@@ -111,13 +111,58 @@ func (v *validator) exceptions() {
 			}
 			rules[rule.Value] = true
 		}
+		metadataWaiver := false
+		for rule := range rules {
+			metadataWaiver = metadataWaiver || rule == "FRONTMATTER" || rule == "PROFILE" || strings.HasPrefix(rule, "MISSING_")
+		}
+		if (metadataWaiver && strings.HasSuffix(name, ".md")) || e.get("file_sha256") != nil {
+			digest := sha256.Sum256(file.data)
+			if e.text("file_sha256", false) != hex.EncodeToString(digest[:]) {
+				e.issue(n, "EXCEPTION", "metadata waivers require file_sha256 to match the complete reviewed file; renew the exception after metadata changes")
+				valid = false
+			}
+		}
+		findings := map[Finding]bool{}
+		for _, node := range e.list("findings") {
+			entry := e.child(node)
+			if entry == nil {
+				valid = false
+				continue
+			}
+			line, ok := entry.integer("line", true)
+			finding := Finding{Path: target, Line: line, Rule: entry.text("rule", true), Message: entry.text("message", true), Severity: SeverityError}
+			if !ok || line < 1 || finding.Rule != "PLAN_CONTENT" || !rules[finding.Rule] || finding.Message == "" || findings[finding] {
+				entry.issue(node, "EXCEPTION", "reviewed content findings require PLAN_CONTENT, a positive body line, and a unique exact diagnostic message at that line")
+				valid = false
+			}
+			findings[finding] = true
+		}
+		if rules["PLAN_CONTENT"] && len(findings) == 0 {
+			e.issue(n, "EXCEPTION", "PLAN_CONTENT exceptions must list the exact reviewed findings by rule, line, and message")
+			valid = false
+		}
+		if kind == "adaptation" && rules["STRUCTURE"] && strings.HasPrefix(name, "plans/") {
+			for _, finding := range v.result.Findings {
+				if finding.Path == target && finding.Rule == "STRUCTURE" {
+					e.issue(n, "EXCEPTION", "plan adaptations cannot waive missing or empty required content areas; use supported headings or a reviewed legacy exception")
+					valid = false
+					break
+				}
+			}
+		}
 		if !valid || len(rules) == 0 {
 			e.issue(n, "EXCEPTION", "provide at least one permitted explicit rule")
 			continue
 		}
+		offset := 0
+		if targetFile := v.files[target]; targetFile != nil {
+			_, _, offset, _, _ = splitFrontMatter(targetFile.data)
+		}
 		kept := make([]Finding, 0, len(v.result.Findings))
 		for _, finding := range v.result.Findings {
-			if finding.Path != target || !rules[finding.Rule] {
+			bodyFinding := finding
+			bodyFinding.Line -= offset
+			if finding.Path != target || !rules[finding.Rule] || (finding.Rule == "PLAN_CONTENT" && !findings[bodyFinding]) {
 				kept = append(kept, finding)
 			}
 		}
