@@ -3,6 +3,7 @@ package artifactlint
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -81,17 +82,20 @@ type validator struct {
 func Validate(root string) (Result, error) {
 	abs, err := filepath.Abs(root)
 	if err != nil {
-		return Result{}, fmt.Errorf("resolve repository: %w", err)
+		return Result{}, fmt.Errorf("cannot resolve repository directory")
 	}
 	info, err := os.Stat(abs)
-	if err != nil || !info.IsDir() {
+	if err != nil {
+		return Result{}, repositoryIO(abs, abs, "inspect repository", err)
+	}
+	if !info.IsDir() {
 		return Result{}, fmt.Errorf("repository must be an accessible directory")
 	}
 	v := &validator{root: abs, files: map[string]*source{}, plans: map[string]*planRecord{}, result: Result{Findings: []Finding{}}}
-	// Wrapped errors carry OS path context only, never file contents.
+	// Operational diagnostics expose relative paths and known causes, never raw OS errors.
 	err = filepath.WalkDir(abs, func(p string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return fmt.Errorf("read repository entry: %w", walkErr)
+			return repositoryIO(abs, p, "read directory entry", walkErr)
 		}
 		if d.IsDir() {
 			if p == abs {
@@ -108,7 +112,7 @@ func Validate(root string) (Result, error) {
 		}
 		rel, relErr := filepath.Rel(abs, p)
 		if relErr != nil {
-			return fmt.Errorf("resolve repository entry: %w", relErr)
+			return fmt.Errorf("cannot resolve repository entry")
 		}
 		rel = filepath.ToSlash(rel)
 		if d.Type()&os.ModeSymlink != 0 {
@@ -117,7 +121,7 @@ func Validate(root string) (Result, error) {
 		}
 		info, statErr := d.Info()
 		if statErr != nil {
-			return fmt.Errorf("inspect repository file: %w", statErr)
+			return repositoryIO(abs, p, "inspect file", statErr)
 		}
 		if !info.Mode().IsRegular() {
 			v.add(rel, 1, "PATH", "store regular files only; special files are not supported")
@@ -129,7 +133,7 @@ func Validate(root string) (Result, error) {
 		}
 		data, readErr := os.ReadFile(p)
 		if readErr != nil {
-			return fmt.Errorf("read repository file: %w", readErr)
+			return repositoryIO(abs, p, "read file", readErr)
 		}
 		v.files[rel] = &source{path: rel, data: data}
 		if info.Size() > 5*1024*1024 {
@@ -188,4 +192,21 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func repositoryIO(root, name, operation string, err error) error {
+	rel, relErr := filepath.Rel(root, name)
+	if relErr != nil {
+		rel = "."
+	}
+	cause := "operating system I/O failure"
+	switch {
+	case errors.Is(err, fs.ErrPermission):
+		cause = "permission denied"
+	case errors.Is(err, fs.ErrNotExist):
+		cause = "file or directory does not exist"
+	case errors.Is(err, fs.ErrInvalid):
+		cause = "invalid file operation"
+	}
+	return fmt.Errorf("%s %q: %s", operation, filepath.ToSlash(rel), cause)
 }
