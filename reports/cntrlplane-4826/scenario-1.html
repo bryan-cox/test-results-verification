@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-<header class="topbar"><div class="brand">CNTRLPLANE-4826 · Verification</div><nav><a href="index.html">Dashboard</a><a href="scenario-1.html" class="active">T1 Release</a><a href="scenario-2.html">T2 Config</a><a href="scenario-3.html">T3 VM size</a><a href="scenario-4.html">T4 Predicate</a><a href="scenario-5.html">T5 Reconcile</a><a href="scenario-6.html">T6 Scale</a><a href="scenario-7.html">T7 Stable pool</a><a href="scenario-8.html">T8 Compatibility</a><a href="automated-tests.html">Automated</a><a href="appendices.html">Appendices</a><a href="full-report.html">Corrections log</a></nav></header>
+<header class="topbar"><div class="brand">CNTRLPLANE-4826 · Verification</div><nav><a href="index.html">Dashboard</a><a href="scenario-1.html" class="active">T1 Release</a><a href="scenario-2.html">T2 Config</a><a href="scenario-3.html">T3 VM size</a><a href="scenario-4.html">T4 Predicate</a><a href="scenario-5.html">T5 Reconcile</a><a href="scenario-6.html">T6 Scale</a><a href="scenario-7.html">T7 Stable pool</a><a href="scenario-8.html">T8 Compatibility</a><a href="automated-tests.html">Automated</a><a href="appendices.html">Appendices</a></nav></header>
 <main>
 <div class="scenario-head"><div><div class="eyebrow">T1 · P0 · PASS</div><h1>T1 — Release A→B Replace comparison</h1></div><span class="badge pass">PASS</span></div><p class="lead">Reproduce the zero-upToDateReplicas stall with the operator at head's own base commit, then run the same Azure Replace rollout at head. Before/after state, continuous observations and operator provenance are included for every phase.</p>
 <div class="callout good"><p><strong>Result: both T1 verdicts PASS.</strong> Baseline (base <code>ee327075b1</code>): physical A→B rollout completed, but <code>NodePool.status.version</code> stayed at A and <code>UpdatingVersion</code> stayed True for the full 180 s hold. Patched (head <code>ee5691233b</code>): fresh pool completed A→B from scratch, advanced <code>status.version</code> to B, and cleared <code>UpdatingVersion</code> after the physical gates were satisfied. Two additional runs show the same predicate freezing a brand-new NodePool under base and head completing that exact rollout in place.</p></div>
@@ -101,6 +101,6 @@
 
 <p class="back"><a href="index.html">← Return to dashboard</a></p>
 </main>
-<footer><a href="https://github.com/openshift/hypershift/pull/10084">openshift/hypershift#10084</a> · CNTRLPLANE-4826 · round 5 · 2026-10-29 · sanitized bundle</footer>
+<footer><a href="https://github.com/openshift/hypershift/pull/10084">openshift/hypershift#10084</a> · CNTRLPLANE-4826 · 2026-10-29 · sanitized bundle</footer>
 </body>
 </html>
