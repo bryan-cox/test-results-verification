@@ -66,10 +66,19 @@ violations), and **2** (usage, I/O, scanner version/failure, or other tool error
 With `go run`, Go itself reports a failed subprocess as a nonzero status;
 invoke the built binary when consuming the exact exit code.
 
+`--body-hash FILE` is a separate mode for computing exception hashes. It
+accepts `--root`, but cannot be combined with `--secrets` or an explicit
+`--format`. Conflicting modes return usage error code 2 without printing a
+hash or a validation result. An explicitly empty filename also returns code 2.
+Targets must be relative paths that resolve to regular files inside the
+repository. Absolute paths, escaping symlinks, and directories are rejected.
+
 ## Diagnostics and Rules
 
 Diagnostics include relative file, line, severity, stable rule ID, and a
-suggested action. YAML parse failures intentionally omit raw parser messages,
+suggested action. Operational failures identify a repository-relative file and
+known cause, such as permission denied, without printing an absolute checkout
+path or file contents. YAML parse failures intentionally omit raw parser messages,
 which can contain source values. Secret findings omit the match and value.
 GitHub annotations escape control characters in paths and messages.
 
@@ -85,6 +94,19 @@ GitHub annotations escape control characters in paths and messages.
   and relationship entry shapes.
 - `PROFILE`, `STRUCTURE`: new-plan IEEE declaration and the seven content
   areas defined in [format.md](format.md#plan-body-structure).
+- `PLAN_CONTENT`: required content within the IEEE plan areas, including
+  non-placeholder identifier fields, acceptance mappings, references,
+  environment details, case objectives and preconditions, execution steps
+  and expected results, risk/mitigation pairs, and approval information.
+  Diagnostics identify the case or incomplete table row. Drafts can retain
+  pending reviewer approval; active plans need a named reviewer and date.
+  See the [content requirements](format.md#plan-body-structure) for supported
+  layouts. Duplicate case IDs and references to undefined mapped cases are
+  `IDENTITY` and `RELATIONSHIP` errors and cannot be excepted.
+- `PLAN_APPROVAL`: missing or incomplete author/reviewer approval for an
+  active plan. This rule cannot be excepted. Changing a historical draft to
+  active requires approval even if its body-pinned content exception remains
+  valid.
 - `NAME`, `IDENTITY`, `RELATIONSHIP`: lowercase artifact paths, unique
   production plan IDs, primary/backport traceability, matching PR
   URLs/numbers, and valid noncyclic replacement-plan references.
@@ -157,10 +179,13 @@ For preserved historical content:
    [migration inventory](migration.md#migration-inventory).
 2. Preserve available facts and document missing information. Set `draft`
    when possible; do not fabricate identifiers, dates, results, or sections.
-3. Compute the body hash:
+3. Compute the body hash. For a Markdown metadata waiver, also compute the
+   full-file hash:
 
    ```sh
    go run ./cmd/verify-artifacts --body-hash plans/legacy.md
+   # Required for FRONTMATTER, PROFILE, or MISSING_* waivers on Markdown:
+   shasum -a 256 plans/legacy.md
    ```
 
 4. Add an exact-path exception to root `.artifactlint.yaml` and obtain review:
@@ -173,6 +198,7 @@ For preserved historical content:
        source: https://github.com/example/source/blob/main/plan.md
        reason: Preserved historical plan; IEEE declaration and sections unavailable
        body_sha256: "<hash printed by the command>"
+       file_sha256: "<full-file hash printed by shasum>"
        gaps:
          - No IEEE 829 declaration in the original
          - Environment and approvals sections were never written
@@ -183,7 +209,7 @@ Permitted rules depend on the pinned artifact:
 
 | Exception `path` | Permitted rules |
 |------------------|-----------------|
-| Markdown plan or report | `FRONTMATTER`, plan/report `MISSING_*` core-field rules, `PROFILE`, `STRUCTURE`, `REPORT_BODY` |
+| Markdown plan or report | `FRONTMATTER`, plan/report `MISSING_*` core-field rules, `PROFILE`, `STRUCTURE`, `REPORT_BODY`; historical plan content gaps can also name `PLAN_CONTENT` |
 | `reports/<key>/metadata.yaml` | Bundle-metadata `MISSING_*` rules, such as `MISSING_SCENARIO_COUNT` |
 | `reports/<key>/index.html` | `BUNDLE`, for a migrated bundle with no `metadata.yaml`; the entry point is pinned because the absent file cannot be hashed |
 
@@ -193,18 +219,49 @@ security, naming, relationships, paths, links, and report-count/file-consistency
 rules cannot be disabled, and a missing `index.html` cannot be excepted.
 
 Use `kind: adaptation` only for reviewed body-structure adaptations, with
-`STRUCTURE` or `REPORT_BODY`. Exceptions have no globs and require an existing
+`STRUCTURE` or `REPORT_BODY`. A plan adaptation cannot suppress a missing or
+empty required content area. Use supported headings so content remains
+checkable, or a reviewed legacy exception to preserve an actual historical
+gap. Exceptions have no globs and require an existing
 artifact, a nonempty reason, a public HTTPS source, a body hash, and a
 nonempty `gaps` list recording what remains missing. Removing or renaming a
 file requires updating its exception. Adding `metadata.yaml` to a bundle makes
 its `BUNDLE` exception invalid, so remove it.
 
-The hash covers the body after any Markdown front matter (the whole file for
-YAML and HTML) with CRLF normalized to LF.
-Metadata-only changes retain the hash. A body change invalidates it and
-requires conformity to current policy or renewed, explicit exception review.
+`body_sha256` covers the body after any Markdown front matter, or the whole
+file for YAML and HTML, with CRLF normalized to LF. Body-only waivers retain
+their hash after metadata edits. Markdown `FRONTMATTER`, `PROFILE`, and
+`MISSING_*` waivers also require `file_sha256`, the SHA-256 of the complete
+file's original bytes. Metadata changes invalidate that full-file pin. Any
+supplied `file_sha256` is enforced, including on body-only exceptions.
+A body change requires conformity or renewed, explicit exception review.
 Reviewers—not heuristics—decide whether a rewrite has become material.
 Every exception still receives sanitization and secret checks.
+
+`PLAN_CONTENT` exceptions must include a `findings` list. Each entry names an
+exact rule, line, and diagnostic message. For Markdown, `line` starts at 1 in
+the normalized body after the closing front-matter delimiter. This keeps the
+selector stable after metadata-only edits. For YAML and HTML, it is a file
+line. Copy the message exactly from validator output. Other findings remain
+errors, even when they share an excepted rule and unchanged body.
+
+```yaml
+rules: [PLAN_CONTENT]
+findings:
+  - rule: PLAN_CONTENT
+    line: 27
+    message: test case must specify preconditions, or explain why none apply
+```
+
+The three content exceptions in `.artifactlint.yaml` preserve published plans
+at their cited `main` revisions. OCPSTRAT-2653 and OCPSTRAT-3679 list nine
+missing precondition declarations. CNTRLPLANE-4338 uses narrative case and
+environment details, risks, and sign-off instructions outside the supported
+field and table layouts. Its entry lists 33 specific format findings. These
+proposals require review with this PR. Matching entries produce
+`EXCEPTION_APPLIED` warnings. New findings still fail validation.
+They do not supply or infer missing setup. Any body edit invalidates the
+exception and requires the plan to meet the content checks or renewed review.
 
 ## Security Review
 
@@ -232,10 +289,15 @@ test coverage, and any external styling or embedded active content.
 ### Compatibility Evaluation
 
 The cleanup was checked against `main` at `acfe392` on 2026-11-06.
-`make test lint build` passes with its existing plans and report bundles,
-including the pinned secret scanner. Related Jira issues may omit `role`;
-each nonempty Jira list still requires one explicit primary issue. No
-production plan or report needed an edit or a validation exception.
+The content checks identified missing explicit preconditions in TC-025,
+TC-026, TC-027, and TC-041 of `plans/ocpstrat-2653.md`, and TC-002, TC-003,
+TC-004, TC-012, and TC-013 of `plans/ocpstrat-3679.md`. Their bodies remain
+unchanged; exact-path, body-pinned legacy exceptions record these gaps for
+review. The example now explicitly reuses its first case's preconditions.
+Existing report formats and report content do not change.
+
+Related Jira issues may omit `role`; each nonempty Jira list still requires
+one explicit primary issue.
 
 The repository's sanitized `plans/_example.md` passes. Representative open
 contributions were evaluated as artifact-only snapshots without executing
@@ -273,7 +335,10 @@ Pull requests execute their own Makefile and Go code on the shared pool, so
 fork PRs must not run without maintainer review. Keep the repository's
 **Actions → General → Fork pull request workflows** setting at **Require
 approval for all external contributors**, and review a fork PR's Makefile,
-workflow, and Go changes before approving its run. Live infrastructure/App changes
+workflow, and Go changes before approving its run. Also inspect `go.mod`,
+`go.sum`, and the source of new or replaced dependencies, including local
+`replace` targets. Dependency initialization code runs during Go tests even
+when the PR leaves the test files unchanged. Live infrastructure/App changes
 require separate operator approval; CI does not provision its own runners.
 
 After the workflow lands and produces a successful check on `main`, a

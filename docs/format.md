@@ -279,12 +279,73 @@ are not required. Equivalent headings include **Purpose and Objectives**,
 **References**, **Prerequisites**, **Test Approach and Design**, **Risks and
 Contingencies**, and **Approval and Exit Criteria**. Combined headings may
 cover multiple areas. Code-fenced headings do not satisfy a content area.
-Explain an inapplicable area rather than silently omitting it; substantial
-adaptations can use an explicitly reviewed `STRUCTURE` exception.
+Explain an inapplicable area rather than silently omitting it. Layout
+adaptations must retain recognizable, populated content areas. Only reviewed
+legacy exceptions may preserve missing areas.
 
-These are machine-checkable **repository requirements**, not a claim that
-lint certifies IEEE compliance. Reviewers assess meaningful steps, expected
-results, acceptance coverage, and adequate evidence.
+The linter also checks the required content within those areas. Empty fields,
+placeholder-only values such as `TBD`, `TODO`, or `N/A`, and tables without
+data rows do not satisfy the requirements:
+
+- The identifier section includes labeled `ID`, `Version`, and calendar
+  `Date` values and references IEEE 829. `Identifier` and `Updated` are accepted
+  aliases for `ID` and `Date`.
+- The introduction describes the purpose or objectives. The plan includes an
+  acceptance-criteria mapping table. Each criterion has a description and
+  references at least one defined case. Case IDs are unique and may use
+  `TC-<number>` or a category such as `TC-REG-001`. A separate mapping section
+  is supported. Mapping columns accept `Acceptance Criterion` and `Test Case`,
+  or `Requirement` and `Evidence to retain`.
+- References include an implementation, test, code path, or document through
+  a link or inline code path.
+- The environment identifies the cluster type or test target, platform or
+  provider, version or build, and prerequisites or tooling. Property/value
+  tables, labeled paragraphs, and subsection headings are supported.
+- Cases may appear directly under `Test Approach` or `Test Design`, under a
+  separate `Test Cases` heading, or across multiple such regions. The linter
+  checks every case across these regions.
+- Every case has its own identified heading, objective, and preconditions.
+  Preconditions may explain why no setup is needed or reference another
+  case. Missing declarations are rejected even when setup might be inferred
+  from other sections.
+- A manual procedure has an action and expected result for every table row,
+  or labeled steps and a labeled expected result. Action columns may use
+  `Action`, `Actions`, `Procedure`, `Step Description`, or `Description`.
+  A `Step` column is optional. A generic `Description` column counts as a
+  procedure only alongside a step or expected-result column.
+- An automated procedure names its test, supplies execution instructions,
+  and states its expected outcome. A build command needs a test-selection instruction, including
+  when supplied in a separate `Run`, `Command`, or `Execute` field. The linter
+  recognizes `go build`, `go test -c`, `make build`, and `make e2ev2` as builds.
+  Use a `Build` label for other compilation commands. Compilation alone is
+  insufficient. A case can explicitly inherit execution instructions
+  from another defined case, but must state its own expected outcome.
+- Every risk-table row pairs a risk with its mitigation or contingency.
+- The approval table identifies an author and date and includes a reviewer
+  role. Drafts may leave reviewer approval pending. An `active` plan requires
+  a named reviewer and real approval date. A recorded review date must be a
+  real calendar date even in a draft.
+
+Fenced examples, quoted headings, headings inside lists, and HTML comments
+cannot supply missing content areas or case definitions. Quoted headings still
+provide link anchors. Setext headings are supported without counting their
+underline as section content. A line starting with uppercase `TODO` is an
+unfinished marker, including `TODO describe persistence`. Standalone or
+punctuated markers such as `todo` and `Todo: ...` also fail. Substantive prose
+such as "Todo items persist after restart" remains valid.
+Fenced examples cannot supply missing objectives or preconditions. Code blocks
+inside explicit execution or expected-result fields may document commands and
+expected output.
+Equivalent case-field headings such as `Prerequisites` and `Procedure` are
+supported. These content checks emit `PLAN_CONTENT`; duplicate case IDs emit
+`IDENTITY`, and undefined acceptance-mapping references emit `RELATIONSHIP`.
+Missing or incomplete active-plan approvals emit `PLAN_APPROVAL`, which a
+legacy exception cannot waive, even after a metadata-only status change.
+Published historical content gaps require an explicit body-pinned legacy
+exception. A layout-adaptation exception cannot waive missing content.
+
+Reviewers assess whether the documented steps, expected results, acceptance
+coverage, and evidence are technically sufficient.
 
 <a id="lightweight-profile-default"></a>
 
@@ -376,8 +437,10 @@ Describe the feature under test and the purpose of this plan.
 | Property | Value |
 |----------|-------|
 | Cluster type | HostedCluster on AWS |
+| Platform | AWS |
 | OCP version | 4.x |
 | Management cluster | ... |
+| Prerequisites | <required setup and tooling> |
 
 ---
 
@@ -414,7 +477,7 @@ Describe the feature under test and the purpose of this plan.
 
 | Role | Name | Date |
 |------|------|------|
-| Author | | |
+| Author | <author handle> | YYYY-MM-DD |
 | Reviewer | | |
 ````
 
